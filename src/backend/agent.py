@@ -8,7 +8,7 @@ from models import AgentAnswer, DailyWeather, Hub, Region, Score, ScoreChange
 
 from db import Database
 from weather_client import WeatherClient
-from score import is_extreme, calculate, component_counts, weather_type_counts, daily_summary, CHANGE_THRESHOLD
+from score import component_counts, weather_type_counts, daily_summary
 
 import httpx
 from pydantic import BaseModel, Field
@@ -32,11 +32,11 @@ SYSTEM_PROMPT = """
         thresholds) over a rolling 3-year window of historical data.
         - A day can be extreme in more than one component. Components (threshold, weight):
         - low temperature: daily min <= -5°C (1.5)
-        - high temperature: daily max >= 38°C (1.5)
-        - wind speed: daily max wind >= 65 km/h (1)
-        - wind gusts: daily max gust >= 80 km/h (1.5)
-        - rain: daily precipitation >= 50 mm (3)
-        - snow: daily snowfall >= 5 cm (1.5)
+        - high temperature: daily max >= 38°C (1)
+        - wind speed: daily max wind >= 65 km/h (1.5)
+        - wind gusts: daily max gust >= 80 km/h (2)
+        - rain: daily precipitation >= 50 mm (1.5)
+        - snow: daily snowfall >= 5 cm (2)
         - Score = sum of the weights of all extreme components over the window, divided by 3
         (i.e. weighted extreme days per year).
 
@@ -60,8 +60,8 @@ SYSTEM_PROMPT = """
        - get_hub_weather_history: Use it when asked how many ordinary weather days (any snow,
         rain, frost, heat) a hub had in a specific year. Not for explaining scores - scores
         come from extreme days; use get_hub_details for that.
-        - update_scores: Use it when you are asked for the most updated data - this tool 
-        "refreshes" the data and the scores of the hubs
+        - Scores and extreme days are refreshed automatically once a day; there is no tool to
+        refresh them on demand. The data you get from the tools is already the most up to date.
 
         ## How to answer
         - ALWAYS get numbers from tools. 
@@ -81,7 +81,7 @@ SYSTEM_PROMPT = """
         with estimates.
 
         ## Assumptions and uncertainty
-        Put every relevant caveat in the end of the answer, briefly. Include them whenever they apply:
+        Put every relevant caveat in `assumptions` (not in `answer`), briefly. Include them whenever they apply:
         - Hurricane and flood exposure are PROXIES built from wind and precipitation data.
         Coastal storm surge and river flooding are not measured.
         - Historical data comes from a reanalysis model (ERA5, ~25 km grid), which can
@@ -94,6 +94,9 @@ SYSTEM_PROMPT = """
         ## Output
         - `answer`: a clear, concise explanation for an analyst. Lead with the conclusion,
         then the supporting numbers.
+        - `hubs`: the hubs the answer is about, most exposed first, with their scores.
+        Empty if the answer is not about specific hubs.
+        - `assumptions`: the caveats that apply to THIS answer (see above).
         """
 
 
@@ -180,28 +183,3 @@ async def get_hub_weather_history(ctx: RunContext[Deps], hub_id: str, year: int)
     except (ValueError, httpx.HTTPStatusError) as e:
         raise ModelRetry(f"Weather archive request failed: {e}") from e
     return {"hub_id": hub_id, "year": year, **daily_summary(days)}
-
-
-## scoring tools
-
-@agent.tool
-async def update_scores(ctx: RunContext[Deps], days_back: int = 1) -> list[ScoreChange]:
-    """Fetches the weather of the last `days_back` days (1-92, up to yesterday) for every hub,
-    saves extreme days, recalculates scores and returns the scores that changed."""
-    if not 1 <= days_back <= 92:
-        raise ModelRetry("days_back must be between 1 and 92")
-    db, weather = ctx.deps.db, ctx.deps.weather
-    yesterday = date.today() - timedelta(days=1)
-    start = yesterday - timedelta(days=days_back - 1)
-
-    changes = []
-    for hub in await db.get_hubs():
-        extremes = [e for day in await weather.get_weather(hub, start, yesterday) if (e := is_extreme(day))]
-        for e in extremes:
-            await db.add_extreme_day(e)
-
-        new_score = calculate(hub.id, await db.get_extreme_days(hub.id))
-        if hub.score is None or abs(new_score.score - hub.score.score) >= CHANGE_THRESHOLD:
-            reasons = "; ".join(f"{e.day}: {', '.join(e.components)}" for e in extremes) or "extreme days left the window"
-            changes.append(await db.change_score(hub.id, new_score, reasons))
-    return changes

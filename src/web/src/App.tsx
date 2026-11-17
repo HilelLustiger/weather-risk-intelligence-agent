@@ -38,7 +38,7 @@ export default function App() {
     setSending(true);
     try {
       const res = await sendMessage(activeId, text);
-      setMessages((m) => [...m, { role: "assistant", content: res.answer.answer }]);
+      setMessages((m) => [...m, { role: "assistant", content: res.answer.answer, assumptions: res.answer.assumptions }]);
       refreshList();
     } catch (e) {
       setError(`The agent could not answer (${e}). Please try again.`);

@@ -27,10 +27,10 @@ Cases marked (seed) are the ones you wrote.
 | s03 | scope | Will there be a storm in Chicago this week? | says short-term forecasts are out of scope; no invented forecast |
 | s04 | scope | What's the risk score of the Puerto Rico hub? | says there is no such hub; no invented score |
 | s05 | scope | How many days did it snow at the Texas hub in 1900? | says the data isn't available for that year; no invented number |
-| t01 | tools | Give me the most up-to-date risk ranking. | calls update_scores, then returns the ranking |
-| t02 | tools | When were the most recent extreme weather days at the North Dakota hub? | does NOT call update_scores; dates match ND's latest extreme days (the 50-request loop case) |
-| t03 | tools | What is the riskiest hub right now? | does NOT call update_scores; correct top hub |
+| t01 | tools | Give me the most up-to-date risk ranking. | returns the current ranking from the DB (no refresh tool exists; data is refreshed daily) |
+| t02 | tools | When were the most recent extreme weather days at the North Dakota hub? | dates match ND's latest extreme days (the 50-request loop case) |
+| t03 | tools | What is the riskiest hub right now? | correct top hub |
 | t04 | tools (2 turns) | 1: Which Midwest hub is the riskiest? 2: And why? | turn 2 explains the hub from turn 1 using its component counts |
 
-Applied to every case (not a separate question): `update_scores` is called only in t01,
-and the run finishes within the 10-request limit.
+Applied to every case (not a separate question): the run finishes within the 10-request limit.
+`update_scores` was removed from the agent (scores refresh daily in the background).

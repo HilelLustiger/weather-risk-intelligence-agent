@@ -58,7 +58,6 @@
      "Does not give a number of snow days for 1900."]}},
 
   {"id": "t01", "tags": ["tools"], "turns": ["Give me the most up-to-date risk ranking."],
-   "expect_update_scores": true,
    "check": {"type": "top_1"}},
   {"id": "t02", "tags": ["tools"], "turns": ["When were the most recent extreme weather days at the North Dakota hub?"],
    "check": {"type": "latest_dates", "hub": "ND"}},

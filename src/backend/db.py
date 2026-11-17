@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, ReturnDocument
 
-from models import ConversationSummary, Score, ScoreChange, Hub, ExtremeDay
+from models import ConversationSummary, JobRun, Score, ScoreChange, Hub, ExtremeDay
 
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "weather_risk")
@@ -28,6 +28,7 @@ class Database:
         self.score_changes = db.score_changes
         self.conversations = db.conversations
         self.extreme_days = db.extreme_days
+        self.job_runs = db.job_runs
 
 
     async def setup(self) -> None:
@@ -41,6 +42,16 @@ class Database:
         await self.extreme_days.create_index(
             [("hub_id", ASCENDING), ("day", ASCENDING)], unique=True
         )
+        await self.job_runs.create_index([("status", ASCENDING), ("run_at", DESCENDING)])
+
+    async def add_job_run(self, run: JobRun) -> None:
+        """saves one run of the daily update (dates stored as ISO strings, like extreme days)"""
+        await self.job_runs.insert_one(run.model_dump(mode="json"))
+
+    async def get_last_successful_run(self) -> JobRun | None:
+        """returns the most recent successful daily update, or None if there was none"""
+        doc = await self.job_runs.find_one({"status": "success"}, {"_id": 0}, sort=[("run_at", DESCENDING)])
+        return JobRun.model_validate(doc) if doc else None
 
     async def close(self) -> None:
         await self.client.close()

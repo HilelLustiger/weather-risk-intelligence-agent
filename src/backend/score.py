@@ -13,11 +13,11 @@ THRESHOLDS = {
 
 WEIGHTS = {
     "low temperature":  1.5,
-    "high temperature": 1.5,
-    "wind speed":       1,
-    "wind gusts":       1.5,
-    "rain":             3,
-    "snow":             1.5,
+    "high temperature": 1,
+    "wind speed":       1.5,
+    "wind gusts":       2,
+    "rain":             1.5,
+    "snow":             2,
 }
 
 # Inferred weather types: a combination of measurements on the same day. Each part may be

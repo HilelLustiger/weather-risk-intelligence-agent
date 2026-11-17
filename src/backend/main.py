@@ -1,12 +1,14 @@
 from dotenv import load_dotenv
 
-load_dotenv()  # must run before the imports below: db.py reads env vars at import time
+load_dotenv()
 
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api import router
 from agent import Deps
+from daily_update import run_daily
 from db import Database
 from weather_client import OPEN_METEO_ARCHIVE_URL, WeatherClient
 
@@ -19,9 +21,11 @@ async def lifespan(app: FastAPI):
         archive=WeatherClient(base_url=OPEN_METEO_ARCHIVE_URL, path="/archive", timeout=30),
     )
     await deps.db.setup()
+    daily = asyncio.create_task(run_daily(deps.db, deps.weather))
 
     yield {"deps": deps}  # -> request.state.deps
 
+    daily.cancel()
     await deps.db.close()
     await deps.weather.close()
     await deps.archive.close()

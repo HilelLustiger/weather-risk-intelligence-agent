@@ -38,11 +38,15 @@ def _to_chat(messages: list[ModelMessage]) -> list[ChatMessage]:
         for p in m.parts:
             if isinstance(m, ModelRequest) and isinstance(p, UserPromptPart) and isinstance(p.content, str):
                 chat.append(ChatMessage(role="user", content=p.content))
-            elif isinstance(m, ModelResponse) and isinstance(p, ToolCallPart) and p.tool_name == "final_result":
-                chat.append(ChatMessage(role="assistant", content=p.args_as_dict().get("answer", "")))
-            elif isinstance(m, ModelResponse) and isinstance(p, TextPart):
+            elif isinstance(m, ModelResponse) and isinstance(p, (ToolCallPart, TextPart)):
                 try:
-                    chat.append(ChatMessage(role="assistant", content=AgentAnswer.model_validate_json(p.content).answer))
+                    if isinstance(p, ToolCallPart):
+                        if p.tool_name != "final_result":
+                            continue
+                        a = AgentAnswer.model_validate(p.args_as_dict())
+                    else:
+                        a = AgentAnswer.model_validate_json(p.content)
                 except ValidationError:
-                    pass  # interim text, not the final answer
+                    continue  # interim text, not the final answer
+                chat.append(ChatMessage(role="assistant", content=a.answer, assumptions=a.assumptions))
     return chat

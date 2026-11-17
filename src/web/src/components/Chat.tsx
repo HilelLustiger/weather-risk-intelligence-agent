@@ -36,6 +36,13 @@ export default function Chat({ messages, sending, error, onSend }: Props) {
         {messages.map((m, i) => (
           <div key={i} className={`message ${m.role}`} dir="auto">
             {m.role === "assistant" ? <ReactMarkdown>{m.content}</ReactMarkdown> : m.content}
+            {!!m.assumptions?.length && (
+              <ul className="assumptions">
+                {m.assumptions.map((a, j) => (
+                  <li key={j}>{a}</li>
+                ))}
+              </ul>
+            )}
           </div>
         ))}
         {sending && <div className="message assistant muted">Analyzing…</div>}

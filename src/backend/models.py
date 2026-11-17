@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 Region = Literal["Northeast", "Midwest", "South", "West"]
 WeatherComponents = Literal["low temperature", "high temperature", "wind speed", "wind gusts", "rain", "snow"]
@@ -28,6 +28,16 @@ class ScoreChange(BaseModel):
     last_score: Score | None  # None on the hub's first score
     reasons: str
 
+## One run of the daily score update
+class JobRun(BaseModel):
+    id: str
+    run_at: datetime
+    status: Literal["success", "failure"]
+    start_date: date  # first day fetched
+    end_date: date    # last day fetched; the next run starts the day after the last success
+    changed_hubs: list[str] = []
+    error: str | None = None
+
 class ExtremeDay(BaseModel):
     hub_id: str
     day: date
@@ -52,8 +62,14 @@ class DailyWeather(BaseModel):
     precipitation_probability_max: int | None
 
 ## Types for the LLM-UI
+class HubRef(BaseModel):
+    hub_id: str = Field(description="2-letter state code of the hub, e.g. 'TX'")
+    score: float | None = Field(default=None, description="the hub's risk score, if relevant to the answer")
+
 class AgentAnswer(BaseModel):
-    answer: str
+    answer: str = Field(description="the full answer for the analyst, in markdown")
+    hubs: list[HubRef] = Field(default_factory=list, description="hubs the answer is about, most exposed first; empty if none")
+    assumptions: list[str] = Field(default_factory=list, description="caveats and limitations that apply to this answer")
 
 ## Types for the chat API
 class ChatRequest(BaseModel):
@@ -72,6 +88,7 @@ class ConversationSummary(BaseModel):
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
+    assumptions: list[str] = []
 
 class ConversationDetail(BaseModel):
     id: str
