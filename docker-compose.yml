@@ -1,0 +1,20 @@
+services:
+  db:
+    image: mongo:7
+    ports:
+      - "27017:27017"  # exposed so local runs (seed.py, uvicorn --reload) can reach it
+    volumes:
+      - mongo-data:/data/db
+
+  agent:
+    build: ./src/backend
+    env_file: .env
+    environment:
+      MONGODB_URI: mongodb://db:27017  # inside the compose network the host is the service name
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+volumes:
+  mongo-data:
