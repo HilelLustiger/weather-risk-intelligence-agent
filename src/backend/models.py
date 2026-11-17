@@ -63,3 +63,16 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     session_id: str
     answer: AgentAnswer
+
+class ConversationSummary(BaseModel):
+    id: str
+    title: str
+    updated_at: datetime | None = None
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+class ConversationDetail(BaseModel):
+    id: str
+    messages: list[ChatMessage]

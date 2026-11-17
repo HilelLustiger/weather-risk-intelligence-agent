@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, ReturnDocument
 
-from models import Score, ScoreChange, Hub, ExtremeDay
+from models import ConversationSummary, Score, ScoreChange, Hub, ExtremeDay
 
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "weather_risk")
@@ -107,14 +107,27 @@ class Database:
         cursor = self.hubs.find(query).sort("score.score", DESCENDING).limit(k)
         return [Hub.model_validate(doc) async for doc in cursor]
 
-    async def save_conversation(self, conversation_id: str, messages: list[ModelMessage]) -> None:
+    async def save_conversation(self, conversation_id: str, messages: list[ModelMessage], title: str = "") -> None:
         """appends messages to the conversation, creating it if needed.
-        Pass `result.new_messages()` so earlier turns aren't stored twice."""
+        Pass `result.new_messages()` so earlier turns aren't stored twice.
+        `title` is only stored when the conversation is created."""
         await self.conversations.update_one(
             {"_id": conversation_id},
-            {"$push": {"messages": {"$each": ModelMessagesTypeAdapter.dump_python(messages, mode="json")}}},
+            {
+                "$push": {"messages": {"$each": ModelMessagesTypeAdapter.dump_python(messages, mode="json")}},
+                "$set": {"updated_at": datetime.now(timezone.utc)},
+                "$setOnInsert": {"title": title},
+            },
             upsert=True,
         )
+
+    async def list_conversations(self) -> list[ConversationSummary]:
+        """returns all conversations (without messages), most recently updated first"""
+        cursor = self.conversations.find({}, {"title": 1, "updated_at": 1}).sort("updated_at", DESCENDING)
+        return [
+            ConversationSummary(id=doc["_id"], title=doc.get("title") or "Untitled", updated_at=doc.get("updated_at"))
+            async for doc in cursor
+        ]
 
     async def load_conversation(self, conversation_id: str) -> list[ModelMessage]:
         """loads the conversation with the matching id ([] if it doesn't exist)"""

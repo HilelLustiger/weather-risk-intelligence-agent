@@ -16,5 +16,12 @@ services:
     depends_on:
       - db
 
+  web:
+    build: ./src/web
+    ports:
+      - "3000:80"  # open http://localhost:3000
+    depends_on:
+      - agent
+
 volumes:
   mongo-data:
