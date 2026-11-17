@@ -6,6 +6,14 @@ export type AgentAnswer = {
   assumptions: string[];
 };
 export type ConversationSummary = { id: string; title: string; updated_at: string | null };
+type Score = { hub_id: string; computed_at: string; score: number };
+export type ScoreChange = {
+  hub_id: string;
+  changed_at: string;
+  last_score: Score | null;
+  new_score: Score | null;
+  reasons: string;
+};
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, init);
@@ -13,7 +21,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export const listConversations = () => request<ConversationSummary[]>("/conversations");
+export const listAlerts = () => request<ScoreChange[]>("/alerts");
+
+export const listConversations =() => request<ConversationSummary[]>("/conversations");
 
 export const getConversation = (id: string) =>
   request<{ id: string; messages: ChatMessage[] }>(`/conversations/${encodeURIComponent(id)}`);

@@ -2,7 +2,7 @@ services:
   db:
     image: mongo:7
     ports:
-      - "27017:27017"  # exposed so local runs (seed.py, uvicorn --reload) can reach it
+      - "27017:27017"
     volumes:
       - mongo-data:/data/db
 
@@ -19,7 +19,7 @@ services:
   web:
     build: ./src/web
     ports:
-      - "3000:80"  # open http://localhost:3000
+      - "3000:80"
     depends_on:
       - agent
 

@@ -30,8 +30,6 @@ WEATHER_TYPES = {
 
 WINDOW_YEARS = 3
 
-CHANGE_THRESHOLD = 5.0
-
 def is_extreme(day: DailyWeather) -> ExtremeDay | None:
     components = [c for c, crossed in THRESHOLDS.items() if crossed(day)]
     weather_types = [t for t, matches in WEATHER_TYPES.items() if matches(day)]

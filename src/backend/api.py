@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import ValidationError
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, ToolCallPart, UserPromptPart
 from pydantic_ai.usage import UsageLimits
-from models import AgentAnswer, ChatMessage, ChatRequest, ChatResponse, ConversationDetail, ConversationSummary
+from models import AgentAnswer, ChatMessage, ChatRequest, ChatResponse, ConversationDetail, ConversationSummary, ScoreChange
 from agent import agent
 
 router = APIRouter()
@@ -14,6 +14,12 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     result = await agent.run(req.message, message_history=history, deps=deps, usage_limits=UsageLimits(request_limit=10))
     await deps.db.save_conversation(req.session_id, result.new_messages(), title=req.message[:80])
     return ChatResponse(session_id=req.session_id, answer=result.output)
+
+
+@router.get("/alerts")
+async def list_alerts(request: Request, limit: int = 50) -> list[ScoreChange]:
+    """Recent hub score changes (written by the daily update), newest first."""
+    return await request.state.deps.db.get_score_changes(limit)
 
 
 @router.get("/conversations")

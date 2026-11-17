@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from db import Database
 from models import JobRun, ScoreChange
-from score import CHANGE_THRESHOLD, calculate, is_extreme
+from score import calculate, is_extreme
 from weather_client import WeatherClient
 
 UPDATE_AT_UTC = os.getenv("UPDATE_AT_UTC", "06:00")  # HH:MM, once a day
@@ -29,8 +29,8 @@ def date_range(last_success: JobRun | None, today: date) -> tuple[date, date]:
 
 
 async def update_scores(db: Database, weather: WeatherClient, start: date, end: date) -> list[ScoreChange]:
-    """Fetches start..end for every hub, saves extreme days, recalculates scores and returns
-    the scores that changed by at least CHANGE_THRESHOLD."""
+    """Fetches start..end for every hub, saves extreme days, recalculates scores and saves
+    (and returns) a ScoreChange for every hub whose score changed at all."""
     changes = []
     for hub in await db.get_hubs():
         extremes = [e for day in await weather.get_weather(hub, start, end) if (e := is_extreme(day))]
@@ -38,7 +38,7 @@ async def update_scores(db: Database, weather: WeatherClient, start: date, end: 
             await db.add_extreme_day(e)
 
         new_score = calculate(hub.id, await db.get_extreme_days(hub.id))
-        if hub.score is None or abs(new_score.score - hub.score.score) >= CHANGE_THRESHOLD:
+        if hub.score is None or new_score.score != hub.score.score:
             reasons = "; ".join(f"{e.day}: {', '.join(e.components)}" for e in extremes) or "extreme days left the window"
             changes.append(await db.change_score(hub.id, new_score, reasons))
     return changes

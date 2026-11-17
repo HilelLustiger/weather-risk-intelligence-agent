@@ -107,10 +107,16 @@ class Database:
             hub_id=hub_id,
             changed_at=datetime.now(timezone.utc),
             last_score=Score.model_validate(old) if old else None,
+            new_score=new_score,
             reasons=reasons,
         )
         await self.score_changes.insert_one(change.model_dump())
         return change
+
+    async def get_score_changes(self, limit: int = 50) -> list[ScoreChange]:
+        """returns the most recent score changes, newest first"""
+        cursor = self.score_changes.find({}, {"_id": 0}).sort("changed_at", DESCENDING).limit(limit)
+        return [ScoreChange.model_validate(doc) async for doc in cursor]
 
     async def get_top_k(self, k: int, region: str | None = None) -> list[Hub]:
         """returns the K hubs with the highest score, optionally only from one region"""

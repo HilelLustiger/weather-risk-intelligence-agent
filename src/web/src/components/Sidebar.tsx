@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ConversationSummary } from "../api";
+import AlertsBell from "./AlertsBell";
 
 type Props = {
   conversations: ConversationSummary[];
@@ -48,6 +49,7 @@ export default function Sidebar({ conversations, activeId, onSelect, onNew, disa
         <button className="new-chat" onClick={onNew} disabled={disabled} title="New conversation">
           {collapsed ? "+" : "+ New conversation"}
         </button>
+        <AlertsBell />
       </div>
       {!collapsed && (
         <nav>

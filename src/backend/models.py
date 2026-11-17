@@ -26,6 +26,7 @@ class ScoreChange(BaseModel):
     hub_id: str
     changed_at: datetime
     last_score: Score | None  # None on the hub's first score
+    new_score: Score | None = None  # None only on records saved before this field existed
     reasons: str
 
 ## One run of the daily score update

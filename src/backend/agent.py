@@ -4,7 +4,7 @@ import os
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date, timedelta
-from models import AgentAnswer, DailyWeather, Hub, Region, Score, ScoreChange
+from models import AgentAnswer, DailyWeather, Hub, Region, Score, ScoreChange, WeatherComponents, WeatherType
 
 from db import Database
 from weather_client import WeatherClient
@@ -55,6 +55,8 @@ SYSTEM_PROMPT = """
         - Regions are the US Census regions: Northeast, Midwest, South, West.
         - get_top_k_hubs: Use it to get the k hubs that have the highest risk score. 
         You can filter the search by region if you're being asked about specific region.
+        To rank hubs by one hazard instead of the total score (e.g. "most snow", "most storms"),
+        pass a component or a weather_type (one of the two), optionally with a region.
         - get_region_summary: Use this tool when you're being asked to give information about a whole region.
         - get_hub_details: Use it to get details of the current hubs and explain wht a hub has its score.
        - get_hub_weather_history: Use it when asked how many ordinary weather days (any snow,
@@ -126,10 +128,31 @@ async def _find_hub(ctx: RunContext[Deps], hub_id: str) -> Hub:
 ## db tools
 
 @agent.tool
-async def get_top_k_hubs(ctx: RunContext[Deps], k: int = 5, region: Region | None = None) -> list[Hub]:
-    """Returns the k hubs with the highest risk score (worst conditions first),
-    optionally only hubs in one region."""
-    return await ctx.deps.db.get_top_k(k, region)
+async def get_top_k_hubs(
+    ctx: RunContext[Deps],
+    k: int = 5,
+    region: Region | None = None,
+    component: WeatherComponents | None = None,
+    weather_type: WeatherType | None = None,
+) -> list[Hub] | list[dict]:
+    """Returns the k most exposed hubs, optionally only hubs in one region.
+    - No component/weather_type: ranked by total risk score.
+    - component (e.g. 'snow') OR weather_type (e.g. 'storm'): ranked by the number of days of
+      that component / weather type in the 3-year window. Pass at most one of the two."""
+    if component and weather_type:
+        raise ModelRetry("Pass either component or weather_type, not both.")
+    db = ctx.deps.db
+    if not (component or weather_type):
+        return await db.get_top_k(k, region)
+
+    rows = []
+    for hub in await db.get_hubs():
+        if region and hub.region != region:
+            continue
+        days = await db.get_extreme_days(hub.id)
+        n = component_counts(days)[component] if component else weather_type_counts(days)[weather_type]
+        rows.append({"hub": hub, "ranked_by": component or weather_type, "days": n})
+    return sorted(rows, key=lambda r: r["days"], reverse=True)[:k]
 
 
 @agent.tool
