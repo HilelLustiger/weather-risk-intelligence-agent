@@ -1,21 +1,16 @@
 from __future__ import annotations
 
-import os
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date, timedelta
-from models import AgentAnswer, DailyWeather, Hub, Region, Score, ScoreChange, WeatherComponents, WeatherType
+from models import AgentAnswer, Hub, Region, WeatherComponents, WeatherType
 
 from db import Database
 from weather_client import WeatherClient
-from score import component_counts, weather_type_counts, daily_summary
+from score import component_counts, weather_type_counts, daily_summary, normalize
 
 import httpx
-from pydantic import BaseModel, Field
 from pydantic_ai import Agent, ModelRetry, RunContext
-from pydantic_ai.models.anthropic import AnthropicModel
-from pydantic_ai.providers.anthropic import AnthropicProvider
-from pymongo.asynchronous.database import AsyncDatabase
 
 
 MODEL_NAME = "anthropic:claude-haiku-5-5"
@@ -39,6 +34,9 @@ SYSTEM_PROMPT = """
         - snow: daily snowfall >= 5 cm (2)
         - Score = sum of the weights of all extreme components over the window, divided by 3
         (i.e. weighted extreme days per year).
+        - Tools also return `normalized_score` (1-100): the score rescaled across all hubs, so
+        the least exposed hub is 1 and the most exposed is 100. It is relative to the other hubs.
+        Lead with the normalized score and give the raw score next to it.
 
         ## Inferred weather types (reported, NOT part of the score)
         Each type is a combination of measurements on the same day; no part has to reach its
@@ -125,6 +123,12 @@ async def _find_hub(ctx: RunContext[Deps], hub_id: str) -> Hub:
     raise ModelRetry(f"Unknown hub_id {hub_id!r}. Valid ids: {[h.id for h in hubs]}")
 
 
+async def _normalized_scores(db: Database) -> dict[str, float]:
+    """hub_id -> score rescaled to 1-100 across all scored hubs."""
+    scores = [h.score for h in await db.get_hubs() if h.score]
+    return {s.hub_id: round(s.score, 1) for s in normalize(scores)}
+
+
 ## db tools
 
 @agent.tool
@@ -134,7 +138,7 @@ async def get_top_k_hubs(
     region: Region | None = None,
     component: WeatherComponents | None = None,
     weather_type: WeatherType | None = None,
-) -> list[Hub] | list[dict]:
+) -> list[dict]:
     """Returns the k most exposed hubs, optionally only hubs in one region.
     - No component/weather_type: ranked by total risk score.
     - component (e.g. 'snow') OR weather_type (e.g. 'storm'): ranked by the number of days of
@@ -143,7 +147,8 @@ async def get_top_k_hubs(
         raise ModelRetry("Pass either component or weather_type, not both.")
     db = ctx.deps.db
     if not (component or weather_type):
-        return await db.get_top_k(k, region)
+        normalized = await _normalized_scores(db)
+        return [{"hub": h, "normalized_score": normalized.get(h.id)} for h in await db.get_top_k(k, region)]
 
     rows = []
     for hub in await db.get_hubs():
@@ -166,10 +171,13 @@ async def get_region_summary(ctx: RunContext[Deps], region: Region) -> dict:
         components.update(component_counts(days))
         weather_types.update(weather_type_counts(days))
     scores = [h.score.score for h in hubs if h.score]
+    normalized = await _normalized_scores(ctx.deps.db)
+    region_normalized = [normalized[h.id] for h in hubs if h.id in normalized]
     return {
         "region": region,
         "hubs": [h.id for h in hubs],
         "avg_score": round(sum(scores) / len(scores), 2) if scores else None,
+        "avg_normalized_score": round(sum(region_normalized) / len(region_normalized), 1) if region_normalized else None,
         "extreme_days_per_component": dict(components),
         "days_per_weather_type": dict(weather_types),
     }
@@ -184,6 +192,7 @@ async def get_hub_details(ctx: RunContext[Deps], hub_id: str) -> dict:
     days = await ctx.deps.db.get_extreme_days(hub_id)  # sorted oldest -> newest
     return {
         "hub": hub,
+        "normalized_score": (await _normalized_scores(ctx.deps.db)).get(hub_id),
         "extreme_days_per_component": component_counts(days),
         "days_per_weather_type": weather_type_counts(days),
         "latest_extreme_days": days[::-1][:5],

@@ -24,15 +24,18 @@ export default function AlertsBell() {
   const [alerts, setAlerts] = useState<ScoreChange[]>([]);
   const [seen, setSeen] = useState(readSeen);
   const [open, setOpen] = useState(false);
+  const [shown, setShown] = useState<ScoreChange[]>([]); // the unread alerts at the moment the panel opened
 
   useEffect(() => {
     listAlerts().then(setAlerts).catch(() => setAlerts([]));
   }, []);
 
   const newest = alerts[0]?.changed_at ?? "";
-  const unseen = newest > seen; // ISO timestamps compare chronologically
+  const unread = alerts.filter((c) => c.changed_at > seen); // ISO timestamps compare chronologically
+  const unseen = unread.length > 0;
 
   const toggle = () => {
+    if (!open) setShown(unread);
     if (!open && unseen) {
       setSeen(newest);
       try {
@@ -62,9 +65,9 @@ export default function AlertsBell() {
       {open && (
         <div className="alerts-panel">
           <h3>Score changes</h3>
-          {alerts.length === 0 && <p className="muted">No score changes yet</p>}
+          {shown.length === 0 && <p className="muted">No new score changes</p>}
           <ul>
-            {alerts.map((c, i) => (
+            {shown.map((c, i) => (
               <li key={i}>
                 <div className="alert-head">
                   <strong>{c.hub_id}</strong>

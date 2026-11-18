@@ -113,9 +113,12 @@ class Database:
         await self.score_changes.insert_one(change.model_dump())
         return change
 
-    async def get_score_changes(self, limit: int = 50) -> list[ScoreChange]:
-        """returns the most recent score changes, newest first"""
-        cursor = self.score_changes.find({}, {"_id": 0}).sort("changed_at", DESCENDING).limit(limit)
+    async def get_score_changes(self, limit: int = 50, min_delta: float = 0) -> list[ScoreChange]:
+        """returns the most recent score changes that moved the score by at least min_delta, newest first
+        (a hub's first score has no previous one, so it never counts as a change)"""
+        query = {"$expr": {"$gte": [{"$abs": {"$subtract": ["$new_score.score", "$last_score.score"]}}, min_delta]},
+                 "last_score": {"$ne": None}}
+        cursor = self.score_changes.find(query, {"_id": 0}).sort("changed_at", DESCENDING).limit(limit)
         return [ScoreChange.model_validate(doc) async for doc in cursor]
 
     async def get_top_k(self, k: int, region: str | None = None) -> list[Hub]:

@@ -64,3 +64,13 @@ def daily_summary(days: list[DailyWeather]) -> dict[str, float]:
 def weather_type_counts(days: list[ExtremeDay]) -> dict[str, int]:
     """Number of days per inferred weather type in the scoring window."""
     return {t: sum(t in d.weather_types for d in _in_window(days)) for t in WEATHER_TYPES}
+
+def normalize(scores: list[Score]) -> list[Score]:
+    """Rescales scores to 1-100: the lowest hub gets 1, the highest gets 100."""
+    if not scores:
+        return []
+    lo = min(s.score for s in scores)
+    hi = max(s.score for s in scores)
+    if hi == lo:
+        return [s.model_copy(update={"score": 100.0}) for s in scores]
+    return [s.model_copy(update={"score": 1 + 99 * (s.score - lo) / (hi - lo)}) for s in scores]

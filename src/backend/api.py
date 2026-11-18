@@ -1,9 +1,13 @@
+import os
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import ValidationError
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, ToolCallPart, UserPromptPart
 from pydantic_ai.usage import UsageLimits
 from models import AgentAnswer, ChatMessage, ChatRequest, ChatResponse, ConversationDetail, ConversationSummary, ScoreChange
 from agent import agent
+
+ALERT_MIN_DELTA = float(os.getenv("ALERT_MIN_DELTA", "1"))  # score points; smaller changes are history only
 
 router = APIRouter()
 
@@ -18,8 +22,8 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
 
 @router.get("/alerts")
 async def list_alerts(request: Request, limit: int = 50) -> list[ScoreChange]:
-    """Recent hub score changes (written by the daily update), newest first."""
-    return await request.state.deps.db.get_score_changes(limit)
+    """Recent hub score changes of at least ALERT_MIN_DELTA points (written by the daily update), newest first."""
+    return await request.state.deps.db.get_score_changes(limit, ALERT_MIN_DELTA)
 
 
 @router.get("/conversations")

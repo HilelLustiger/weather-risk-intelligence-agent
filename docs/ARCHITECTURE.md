@@ -38,6 +38,7 @@ call, and explains the results in a fixed JSON structure.
 | **Scoring** (`score.py`) | Pure functions: which days are extreme, the score, counts per component and weather type. |
 | **Daily update** (`daily_update.py`) | Fetches new days, stores extreme days, recalculates every hub's score, records each change. |
 | **MongoDB** | contain the docs with the assets as well as job runs, conversations. |
+| **Logfire** (optional) | Traces of every request, agent run, model call, tool call and Open-Meteo call. |
 
 ### Request flow (one chat turn)
 1. The UI sends `POST /api/chat {session_id, message}`.
@@ -86,7 +87,20 @@ A day is **extreme** in a component when it crosses a fixed operational threshol
 **Score = Σ weights of all extreme components over the last 3 years ÷ 3**, i.e. weighted extreme
 days per year. A day can count in more than one component.
 
-I gave the wind, snow, rain and low temperature since the it can lead to closing roads and limit trucks ability to drive.
+**Normalized score (1–100):** the raw score rescaled across all hubs (min-max), so the least
+exposed hub is 1 and the most exposed is 100. It is computed when the agent reads scores, not
+stored: it is relative, so one hub's change would shift every other hub's normalized score.
+The raw score stays the stored value and drives the alerts.
+
+**Why these weights.** Each weight reflects how likely that kind of day is to stop trucks, since
+road transport is what a hub depends on:
+- **Snow and wind gusts (2)** most often shut operations down: snow closes roads, and strong
+  gusts lead to travel restrictions for high-profile vehicles because they can tip empty trailers.
+- **Low temperature, sustained wind and heavy rain (1.5)** cause ice on roads, restrictions for
+  trucks and local flooding. They slow deliveries more often than they stop them.
+- **High temperature (1)** strains workers and equipment but rarely closes roads.
+
+The weights are a judgment call, not fitted to data (see section 2).
 
 **Inferred weather types** (reported to explain answers, not part of the score): a combination of
 measurements on the same day, e.g. *storm* = gusts ≥ 60 km/h and precipitation ≥ 20 mm. They are
@@ -103,7 +117,7 @@ the system's proxy for hurricane/flood questions.
 ├── evals/weather_agent/
 │   ├── cases.json              25 eval cases (questions + how to grade them)
 │   ├── cases.md                the same cases, human-readable
-│   └── run_eval.py             runs the real agent, grades against ground truth from the DB
+│   └── run_eval.py             pydantic-evals dataset: runs the real agent, grades against ground truth from the DB
 └── src/
     ├── backend/
     │   ├── main.py             FastAPI app; starts the daily update task
@@ -123,10 +137,17 @@ the system's proxy for hurricane/flood questions.
 
 ## 6. Data storage
 
-I chose to use **MongoDB**, because:
-- I used the weather API instead of storing the history of the weather data myself, which is a structured data and focused on the parsed data I used for the analysis, so is was easy to store it in docs like the conversations history.
-- Conversation history is pydantic-ai's message list, which is nested JSON of varying shape;
-  it is stored as-is in one document per conversation.
+I chose **MongoDB** because:
+- **The data is small and document-shaped.** Raw weather stays in the Open-Meteo API; only
+  derived data is stored (hubs, extreme days, score changes), and every query is a lookup or sort
+  by hub. No joins or transactions across collections are needed.
+- **The data is already JSON.** Pydantic models are dumped to documents and validated back
+  without an ORM or schema migrations. Lists like an extreme day's `components` are plain arrays.
+- **Conversation history is nested JSON of varying shape** (pydantic-ai's message list), so it is
+  stored as-is in one document per conversation.
+
+A relational database would also work for the scoring data. The trade-off is that the schema is
+not enforced by the database: the Pydantic models are the schema.
 
 | Collection | Contents | Index |
 |---|---|---|
@@ -145,25 +166,43 @@ ordinary-weather questions are answered live from the archive API.
 - It fetches every day since the last **successful** run (so a failed run is covered by the next
   one), stores new extreme days, and recalculates every hub's score.
 - **Any** change in a hub's score is saved and recorded in `score_changes` with its reasons.
-- `GET /alerts` exposes the history; the bell in the UI is colored when there are changes this
-  browser has not seen yet, and opening it shows the list.
+- `GET /alerts` returns only changes of at least `ALERT_MIN_DELTA` score points (default 1, up or
+  down); smaller changes and a hub's first score stay in the history only.
+- The bell in the UI is colored when there are alerts this browser has not seen yet; opening it
+  shows only those unread alerts and marks them as read.
 
-## 8. Evaluation
+## 8. Observability
+
+The backend sends traces to [Logfire](https://logfire.pydantic.dev) (set up in `main.py`):
+
+- **FastAPI** - one span per request (`POST /chat`, `GET /alerts`, ...) with status and duration.
+- **pydantic-ai** - inside `/chat`: the agent run, each model call (prompt, response, input/output
+  tokens, latency) and each tool call with its arguments and result.
+- **httpx** - the Open-Meteo calls made by the tools and the daily update.
+
+So one chat turn is a single trace that shows how many model requests it took, where the time
+went (model vs. tools vs. weather API) and what it cost in tokens.
+Sending is enabled only when `LOGFIRE_TOKEN` is set; without it the app runs the same and nothing
+is sent.
+
+## 9. Evaluation
 
 25 cases in five categories: ranking, numbers, ordinary-weather history, scope (no such hub,
 short-term forecast, year without data), and tool use / multi-turn. One question is in Hebrew.
 
 - **Ground truth is computed at run time** from the DB and the archive API, so the eval stays
   valid after a reseed.
-- Factual cases are graded by code (the correct hubs, in order; the exact numbers).
-- Scope cases are graded by an LLM judge (Claude Sonnet) against explicit claims.
-- Each case runs N times; every run also checks it finished within the 10-request limit.
+- Built on **pydantic-evals**: each case is a `Case`, and every run is graded by three evaluators:
+  - `Correct` - factual cases are graded by code (the correct hubs, in order; the exact numbers);
+    scope cases use the built-in `LLMJudge` (Claude Sonnet) against explicit claims.
+  - `ToolsOk` - `update_scores` is called only where the case expects it.
+  - `WithinLimit` - the answer finished within the 10-request limit.
+- Each case runs N times. Requests, tokens and cost per case are taken from the agent's spans;
+  the report goes to the terminal and, with `LOGFIRE_TOKEN`, to Logfire.
 
 **Latest result:** 49/50 correct (98%), 25 cases × 2 reps, Claude Haiku.
 
 
-## 9. What I would do with more time
+## 10. What I would do with more time
 
-- Rank by component (e.g. "most exposed to winter") instead of only by total score.
-- Normalize the score (0–100 or percentile) so analysts can read it without context.
 - Calibrate thresholds and weights against real hub closure data.
