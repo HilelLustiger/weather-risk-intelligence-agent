@@ -207,3 +207,6 @@ Claude Haiku. On average 2.1 model requests, 1.4 tool calls and 5.3 s per case.
 ## 10. What I would do with more time
 
 - Calibrate thresholds and weights against real hub closure data.
+- Version the scoring methodology, so that threshold changes are not recorded as risk changes.
+- Add authentication, per-user rate limiting and a paid Open-Meteo plan (commercial use).
+- Add data and statistics in the UI so the analists can interact with the data and use the chat as a helper.
