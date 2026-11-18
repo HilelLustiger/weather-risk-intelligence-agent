@@ -16,6 +16,21 @@ services:
     depends_on:
       - db
 
+  # one-off: docker compose run --rm --build eval [--name X --reps N --only id1,id2]
+  eval:
+    build: ./src/backend
+    profiles: [eval]  # not started by `docker compose up`
+    env_file: .env
+    environment:
+      MONGODB_URI: mongodb://db:27017
+      PYTHONPATH: /app  # the backend code the eval imports
+    volumes:
+      - ./evals:/repo/evals
+    entrypoint: ["uv", "run", "--no-sync", "python", "/repo/evals/weather_agent/run_eval.py"]
+    command: ["--reps", "2"]
+    depends_on:
+      - db
+
   web:
     build: ./src/web
     ports:

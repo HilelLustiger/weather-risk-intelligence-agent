@@ -127,6 +127,8 @@ body { margin: 0; }
 .message { max-width: 85%; padding: 10px 14px; border-radius: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .message.user { align-self: flex-end; background: var(--user); color: var(--user-fg); white-space: pre-wrap; }
 .message.assistant { align-self: flex-start; background: var(--assistant); }
+.message.assistant p { white-space: pre-line; } /* a single newline from the model still breaks the line */
+.message.assistant li + li { margin-top: 4px; }
 .message.assistant p:first-child { margin-top: 0; }
 .message.assistant p:last-child { margin-bottom: 0; }
 .assumptions {

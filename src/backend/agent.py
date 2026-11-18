@@ -93,7 +93,9 @@ SYSTEM_PROMPT = """
 
         ## Output
         - `answer`: a clear, concise explanation for an analyst. Lead with the conclusion,
-        then the supporting numbers.
+        then the supporting numbers. Format it as markdown that is easy to scan: short paragraphs
+        (1-2 sentences) separated by a blank line, and a bullet list (one item per line) when
+        listing several hubs, numbers or reasons. No long blocks of text.
         - `hubs`: the hubs the answer is about, most exposed first, with their scores.
         Empty if the answer is not about specific hubs.
         - `assumptions`: the caveats that apply to THIS answer (see above).

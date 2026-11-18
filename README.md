@@ -46,6 +46,10 @@ npm run dev                       # http://localhost:5173, proxies /api to :8000
 from the DB at run time. Needs MongoDB with seeded data and `ANTHROPIC_API_KEY`.
 
 ```bash
+# with Docker (uses the db container; --build picks up code changes)
+docker compose run --rm --build eval --name baseline --reps 2
+
+# or locally
 cd src/backend
 uv run python ../../evals/weather_agent/run_eval.py --name baseline --reps 2
 ```

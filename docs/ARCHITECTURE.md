@@ -200,7 +200,8 @@ short-term forecast, year without data), and tool use / multi-turn. One question
 - Each case runs N times. Requests, tokens and cost per case are taken from the agent's spans;
   the report goes to the terminal and, with `LOGFIRE_TOKEN`, to Logfire.
 
-**Latest result:** 49/50 correct (98%), 25 cases × 2 reps, Claude Haiku.
+**Latest result:** 98.7% of assertions passed (`Correct`, `ToolsOk`, `WithinLimit`), 25 cases × 2 reps,
+Claude Haiku. On average 2.1 model requests, 1.4 tool calls and 5.3 s per case.
 
 
 ## 10. What I would do with more time
